@@ -27,6 +27,7 @@ public struct BaadalManager {
     }
     
     @available(macOS 10.15.0, *)
+    @available(iOS 13.0.0, *)
     func save(record: CKRecord) async throws -> CKRecord {
  
         return try await withCheckedThrowingContinuation { continutation in
@@ -43,6 +44,7 @@ public struct BaadalManager {
     }
     
     @available(macOS 10.15.0, *)
+    @available(iOS 13.0.0, *)
     func delete(_ item: RecordIDItem) async throws -> CKRecord.ID {
         return try await withCheckedThrowingContinuation { continutation in
             database.delete(withRecordID: item.recordId) { id, error in
@@ -57,6 +59,7 @@ public struct BaadalManager {
     }
     
     @available(macOS 10.15.0, *)
+    @available(iOS 13.0.0, *)
     func fetch(recordType: String) async throws -> [CKRecord]{
         let query = CKQuery(recordType: recordType,
                             predicate: NSPredicate(value: true))
@@ -65,34 +68,36 @@ public struct BaadalManager {
         
         return try await withCheckedThrowingContinuation { continutation in
             if #available(macOS 12.0, *) {
-                database.fetch(withQuery: query) { result in
-                    
-                    switch(result) {
-                    case .success((let matchResults,_)):
-                        for matchResult in matchResults {
-                            let x = matchResult.1
-                            switch(x) {
-                            case .success(let record):
-                                records.append(record)
-                                
-                            case .failure(let err):
-                                print("❌ Failed to fetch matchedResult from iCloud with error \(err)")
+                if #available(iOS 15.0, *) {
+                    database.fetch(withQuery: query) { result in
+                        
+                        switch(result) {
+                        case .success((let matchResults,_)):
+                            for matchResult in matchResults {
+                                let x = matchResult.1
+                                switch(x) {
+                                case .success(let record):
+                                    records.append(record)
+                                    
+                                case .failure(let err):
+                                    print("❌ Failed to fetch matchedResult from iCloud with error \(err)")
+                                    return continutation.resume(throwing: BaadalError.failedToFetch)
+                                }
+                            }
+                            break
+                            
+                        case .failure(let error):
+                            print("❌ Failed to fetch records from iCloud with error \(error)")
+                            if let ckError = error as? CKError,
+                               ckError.code == .notAuthenticated {
+                                return continutation.resume(throwing: BaadalError.notAuthenticated)
+                            } else {
                                 return continutation.resume(throwing: BaadalError.failedToFetch)
                             }
                         }
-                        break
                         
-                    case .failure(let error):
-                        print("❌ Failed to fetch records from iCloud with error \(error)")
-                        if let ckError = error as? CKError,
-                           ckError.code == .notAuthenticated {
-                            return continutation.resume(throwing: BaadalError.notAuthenticated)
-                        } else {
-                            return continutation.resume(throwing: BaadalError.failedToFetch)
-                        }
+                        return continutation.resume(returning: records)
                     }
-                    
-                    return continutation.resume(returning: records)
                 }
             }
         }
